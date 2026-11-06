@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="餐饮经营分析系统 · 收入分析模块演示看板：渠道 → 同店新店 → 门店 → 品类量价 → 客流客单，五层下钻。" />
+    <title>餐饮收入分析看板 · 五层下钻</title>
+    <link rel="stylesheet" href="./src/web/styles.css" />
+    <!-- ECharts 走 CDN，零构建、零 npm 依赖；加载失败时表格仍可读，图表位置降级提示 -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <!-- SheetJS 固定版本 0.20.3（浏览器内读写 xlsx，文件不上传）；加载失败时导入页降级为 CSV。
+         未加 SRI：该 CDN 对同一 URL 返回的字节不稳定，integrity 校验会间歇失败。 -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  </head>
+  <body>
+    <!-- 全局错误条：window.onerror / unhandledrejection 兜底时显示 -->
+    <div id="error-bar" class="error-bar" role="alert" hidden></div>
+    <!-- 信息提示条（非错误）：本机导入数据失效回退、保存失败等 -->
+    <div id="notice-bar" class="notice-bar" role="status" hidden>
+      <span id="notice-text"></span>
+      <button type="button" id="notice-close" class="notice-close" aria-label="关闭提示">×</button>
+    </div>
+
+    <div class="app" id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">收</span>
+          <div class="brand-text">
+            <p class="brand-title">餐饮收入分析看板 <span class="source-badge is-demo" id="source-badge">演示数据</span>
+              <button type="button" class="source-reset" id="source-reset" hidden>恢复演示数据</button></p>
+            <p class="brand-sub" id="period-label">2024-09 同期 → 2025-09 本期 · 五层下钻 · 金额单位：万元</p>
+          </div>
+        </div>
+        <nav class="nav" id="nav" aria-label="五层下钻与工具导航">
+          <a class="nav-tab" href="#/channel" data-route="channel">
+            <span class="nav-level">第 1 层</span>渠道结构
+          </a>
+          <a class="nav-tab" href="#/store-mix" data-route="store-mix">
+            <span class="nav-level">第 2 层</span>同店 / 新店
+          </a>
+          <a class="nav-tab" href="#/store-rank" data-route="store-rank">
+            <span class="nav-level">第 3 层</span>门店排名
+          </a>
+          <a class="nav-tab" href="#/category" data-route="category">
+            <span class="nav-level">第 4 层</span>品类量价
+          </a>
+          <a class="nav-tab" href="#/traffic" data-route="traffic">
+            <span class="nav-level">第 5 层</span>客流客单
+          </a>
+          <span class="nav-sep" aria-hidden="true"></span>
+          <a class="nav-tab nav-tab--tool" href="#/import" data-route="import">
+            <span class="nav-level">工具</span>数据导入
+          </a>
+          <a class="nav-tab nav-tab--tool" href="#/report" data-route="report">
+            <span class="nav-level">工具</span>分析报告
+          </a>
+        </nav>
+      </header>
+
+      <section class="metric-row" id="metric-cards" aria-label="核心经营指标">
+        <!-- 由 main.js 渲染 5 张指标卡；数据加载完成前显示占位 -->
+        <article class="metric-card">
+          <p class="metric-label">数据加载中…</p>
+          <p class="metric-value">—</p>
+        </article>
+      </section>
+
+      <div class="insight" id="insight" hidden>
+        <span class="insight-tag">一句话结论</span>
+        <p class="insight-text" id="insight-text"></p>
+      </div>
+
+      <div class="page-head" id="page-head"></div>
+      <main class="page" id="page" aria-live="polite"></main>
+      <div class="page-foot" id="page-foot"></div>
+
+      <footer class="footer">
+        <span id="footer-data">演示数据，非真实经营数据</span>
+        <span>同店口径按同店收入占比折算，为课程演示口径</span>
+        <span id="footer-derived" hidden></span>
+        <span id="footer-source">数据来源：data/revenue_2025-09.json · 计算引擎 src/engine/</span>
+      </footer>
+    </div>
+
+    <!-- 数据 / 协议加载失败时的友好提示，避免白屏 -->
+    <div class="boot-fatal" id="boot-fatal" hidden>
+      <div class="boot-fatal-card">
+        <h2 id="boot-fatal-title">看板无法启动</h2>
+        <div id="boot-fatal-body"></div>
+      </div>
+    </div>
+
+    <!-- 自检信息：冒烟测试可读取 data-status / data-scroll-width 等属性 -->
+    <div id="diagnostics" hidden data-status="loading"></div>
+
+    <!--
+      file:// 直开时浏览器会拦截 ES Module 与 fetch（main.js 根本不会执行），
+      这段内联脚本先给出可读提示，避免白屏。
+    -->
+    <script>
+      if (window.location.protocol === "file:") {
+        var fatal = document.getElementById("boot-fatal");
+        if (fatal) {
+          document.getElementById("boot-fatal-title").textContent = "请用本地服务器打开看板";
+          document.getElementById("boot-fatal-body").innerHTML =
+            "<p>当前是用 <code>file://</code> 直接打开 index.html，浏览器会拦截数据读取，页面无法渲染。</p>" +
+            "<p>请在项目根目录执行 <code>npm start</code>（或 <code>python3 -m http.server 8080</code>），然后访问 " +
+            '<a href="http://localhost:8080">http://localhost:8080</a>。</p>' +
+            '<p class="boot-fatal-detail">看板是纯静态页面，必须通过 HTTP 服务打开，不能双击 HTML 文件。</p>';
+          fatal.hidden = false;
+        }
+        var diagnostics = document.getElementById("diagnostics");
+        if (diagnostics) diagnostics.dataset.status = "file-protocol";
+      }
+    </script>
+
+    <script type="module" src="./src/web/main.js"></script>
+  </body>
+</html>
