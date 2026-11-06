@@ -4,7 +4,9 @@
  *
  * 做什么：
  * 1. 用 node:http 起本地静态服务器，serve 仓库根目录（免 npx / 免装依赖）；
- * 2. 用 Chrome headless 打开 7 个场景：5 个分析页 + 无 hash + 非法 hash 兜底；
+ * 2. 用 Chrome headless 打开 12 个页面场景：5 个分析页 + 无 hash + 非法 hash 兜底 + 数据导入 / 分析报告
+ *    + 本机导入数据注入（看板、报告、损坏回退）；再用 CDP 驱动 6 个导入交互流程
+ *    （下载模板往返、模板改数端到端 + 报告 PDF、错误清单、修改导入与恢复、折算标注、取消 / 不支持格式）；
  * 3. 用 CDP（Chrome DevTools Protocol）固定视口为 1920×1080、等待看板自检状态 ready 后再读 DOM，
  *    避免 --dump-dom + --virtual-time-budget 的渲染时序竞争；
  * 4. 断言：数据加载完成、页面/标题/指标卡/一句话结论/表格行数、图表容器（ECharts 可用则有 canvas；
@@ -24,11 +26,12 @@ import http from "node:http";
 import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
-import { readFile, rm, mkdtemp } from "node:fs/promises";
+import { readFile, rm, mkdtemp, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { analyze } from "../src/engine/index.js";
+import { analyze, denormalize, importWorkbook, toCSV } from "../src/engine/index.js";
+import { buildReportModel } from "../src/web/reportModel.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CHROME_PATH =
@@ -92,7 +95,49 @@ const PAGES = {
   },
 };
 
-/** 冒烟场景：5 个分析页 + 无 hash + 非法 hash 两个兜底 */
+// 工具页期望值
+const reportModel = buildReportModel({ data: input, result: engine, dataset: { source: { type: "demo" }, meta: { derived: [] } } });
+const REPORT_TABLE_ROWS =
+  engine.channel.rows.length + 1 + // 渠道 + 合计
+  3 + // 同店 / 新店 / 门店合计
+  Math.min(5, engine.store_rank.by_revenue.length) + // 排名前 5
+  engine.category_qty_price.all.length +
+  engine.traffic.categories.length;
+
+PAGES.import = {
+  hash: "#/import",
+  title: "数据导入",
+  tool: true,
+  charts: 0,
+  tableRows: 0,
+  tokens: ["① 下载模板", "② 上传数据", "③ 校验结果与预览", "不会上传到服务器"],
+};
+PAGES.report = {
+  hash: "#/report",
+  title: "收入分析报告",
+  tool: true,
+  charts: reportModel.chapters.length,
+  tableRows: REPORT_TABLE_ROWS,
+  tokens: ["餐饮收入分析报告", "收入总览", "结论汇总", "打印 / 导出 PDF", "演示数据（非真实经营数据）", ...reportModel.chapters.map((c) => c.title)],
+};
+
+// 本机已保存导入数据（模拟用户此前导入过）：美团大众本期 460 → 500
+const STORAGE_KEY = "canyin.dataset.v1";
+const SMOKE_FILE = "smoke-import.xlsx";
+const storedSheets = denormalize(input);
+storedSheets["渠道"][1][2] = 500;
+const storedImport = importWorkbook(storedSheets);
+const STORED_ENTRY = JSON.stringify({
+  version: 1,
+  source: { type: "import", fileName: SMOKE_FILE, importedAt: "2026-11-07T09:30:00.000Z" },
+  data: storedImport.data,
+  meta: storedImport.meta,
+});
+
+/**
+ * 冒烟场景：5 个分析页 + 无 hash + 非法 hash + 2 个工具页 + 本机数据注入 3 个。
+ * storage：页面加载前写入 localStorage 的值；expect：额外断言（数据来源、提示条、指标卡）。
+ */
 const SCENARIOS = [
   { id: "no-hash", label: "无 hash 兜底", path: "/", pageId: "channel" },
   { id: "channel", label: "第 1 层 · 渠道结构", path: "/#/channel", pageId: "channel" },
@@ -101,6 +146,32 @@ const SCENARIOS = [
   { id: "category", label: "第 4 层 · 品类量价", path: "/#/category", pageId: "category" },
   { id: "traffic", label: "第 5 层 · 客流客单", path: "/#/traffic", pageId: "traffic" },
   { id: "illegal-hash", label: "非法 hash 兜底", path: "/#/this-route-does-not-exist", pageId: "channel" },
+  { id: "import", label: "工具 · 数据导入", path: "/#/import", pageId: "import", expect: { source: "demo" } },
+  { id: "report", label: "工具 · 分析报告", path: "/#/report", pageId: "report", expect: { source: "demo" } },
+  {
+    id: "stored-import",
+    label: "本机导入数据 · 看板",
+    path: "/#/channel",
+    pageId: "channel",
+    storage: STORED_ENTRY,
+    expect: { source: "import", metric: "1040.00", tokens: ["导入数据", SMOKE_FILE, "恢复演示数据", "500.00"] },
+  },
+  {
+    id: "stored-report",
+    label: "本机导入数据 · 报告",
+    path: "/#/report",
+    pageId: "report",
+    storage: STORED_ENTRY,
+    expect: { source: "import", metric: "1040.00", tokens: [`导入数据：${SMOKE_FILE}`] },
+  },
+  {
+    id: "stored-broken",
+    label: "本机数据损坏回退",
+    path: "/#/channel",
+    pageId: "channel",
+    storage: "{broken json",
+    expect: { source: "demo", metric: "1000.00", notice: "本机导入数据已失效，已恢复演示数据" },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -251,10 +322,11 @@ async function waitForPageReady(cdp, deadline) {
 }
 
 /**
- * 用 CDP 打开一个页面：固定视口 1920×1080 → 导航 → 等看板就绪 → 读 DOM。
- * @returns {Promise<{dom: string, dataset: object|null, pageErrors: string[], timedOut: boolean, stderr: string}>}
+ * 启动 headless Chrome 并连上页面的 CDP（固定视口 1920×1080）。
+ * @param {{ storage?: string }} [options] storage：每个新文档加载前写入 localStorage 的值
+ * @returns {Promise<{ cdp: CdpConnection|null, pageErrors: string[], close: () => Promise<void>, stderr: () => string, deadline: number }>}
  */
-async function renderPage(url) {
+async function launchPage({ storage } = {}) {
   const profileDir = await mkdtemp(path.join(os.tmpdir(), "revenue-smoke-profile-"));
   const args = [
     "--headless=new",
@@ -275,7 +347,7 @@ async function renderPage(url) {
     "about:blank",
   ];
   if (BLOCK_ECHARTS) {
-    // 用不可达代理拦掉外部请求（只放行本地），模拟 CDN 不可达。
+    // 用不可达代理拦掉外部请求（只放行本地），模拟 CDN 不可达（ECharts 与 SheetJS 都会失败）。
     args.push("--proxy-server=127.0.0.1:9", "--proxy-bypass-list=127.0.0.1;localhost");
   }
 
@@ -287,7 +359,10 @@ async function renderPage(url) {
     if (stderr.length > 4000) stderr = stderr.slice(-4000);
   });
 
-  const cleanup = async () => {
+  const pageErrors = [];
+  let cdp = null;
+  const close = async () => {
+    cdp?.close();
     try {
       child.kill("SIGKILL");
     } catch {
@@ -295,39 +370,55 @@ async function renderPage(url) {
     }
     await rm(profileDir, { recursive: true, force: true }).catch(() => {});
   };
-
   const deadline = Date.now() + PAGE_TIMEOUT_MS;
-  let cdp = null;
+  const result = { cdp: null, pageErrors, close, stderr: () => stderr, deadline };
+
+  const port = await waitForDevToolsPort(profileDir, deadline);
+  if (!port) return result;
+  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+  const pageTarget = targets.find((target) => target.type === "page");
+  if (!pageTarget?.webSocketDebuggerUrl) {
+    stderr += "\n找不到页面调试目标";
+    return result;
+  }
+
+  const webSocket = new WebSocket(pageTarget.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {
+    webSocket.addEventListener("open", resolve, { once: true });
+    webSocket.addEventListener("error", () => reject(new Error("CDP WebSocket 连接失败")), { once: true });
+  });
+  cdp = new CdpConnection(webSocket);
+  cdp.on("Runtime.exceptionThrown", (params) => {
+    pageErrors.push(params?.exceptionDetails?.exception?.description ?? params?.exceptionDetails?.text ?? "未捕获异常");
+  });
+
+  await cdp.send("Page.enable");
+  await cdp.send("Runtime.enable");
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: VIEWPORT.width,
+    height: VIEWPORT.height,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  if (storage !== undefined) {
+    await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `try { if (location.protocol.startsWith("http")) localStorage.setItem(${JSON.stringify(STORAGE_KEY)}, ${JSON.stringify(storage)}); } catch (e) {}`,
+    });
+  }
+  result.cdp = cdp;
+  return result;
+}
+
+/**
+ * 用 CDP 打开一个页面：固定视口 1920×1080 → 导航 → 等看板就绪 → 读 DOM。
+ * @returns {Promise<{dom: string, dataset: object|null, pageErrors: string[], timedOut: boolean, stderr: string}>}
+ */
+async function renderPage(url, { storage } = {}) {
+  let browser = null;
   try {
-    const port = await waitForDevToolsPort(profileDir, deadline);
-    if (!port) return { dom: "", dataset: null, pageErrors: [], timedOut: true, stderr };
-
-    const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-    const pageTarget = targets.find((target) => target.type === "page");
-    if (!pageTarget?.webSocketDebuggerUrl) {
-      return { dom: "", dataset: null, pageErrors: [], timedOut: false, stderr: `${stderr}\n找不到页面调试目标` };
-    }
-
-    const webSocket = new WebSocket(pageTarget.webSocketDebuggerUrl);
-    await new Promise((resolve, reject) => {
-      webSocket.addEventListener("open", resolve, { once: true });
-      webSocket.addEventListener("error", () => reject(new Error("CDP WebSocket 连接失败")), { once: true });
-    });
-    cdp = new CdpConnection(webSocket);
-
-    const pageErrors = [];
-    cdp.on("Runtime.exceptionThrown", (params) => {
-      pageErrors.push(params?.exceptionDetails?.exception?.description ?? params?.exceptionDetails?.text ?? "未捕获异常");
-    });
-
-    await cdp.send("Page.enable");
-    await cdp.send("Runtime.enable");
-    await cdp.send("Emulation.setDeviceMetricsOverride", {
-      width: VIEWPORT.width,
-      height: VIEWPORT.height,
-      deviceScaleFactor: 1,
-      mobile: false,
-    });
+    browser = await launchPage({ storage });
+    const { cdp, pageErrors, deadline } = browser;
+    if (!cdp) return { dom: "", dataset: null, pageErrors: [], timedOut: true, stderr: browser.stderr() };
 
     await cdp.send("Page.navigate", { url });
     const dataset = await waitForPageReady(cdp, deadline);
@@ -344,13 +435,12 @@ async function renderPage(url) {
       dataset,
       pageErrors,
       timedOut: !dataset || !READY_STATES.has(dataset.status),
-      stderr,
+      stderr: browser.stderr(),
     };
   } catch (error) {
-    return { dom: "", dataset: null, pageErrors: [], timedOut: false, stderr: `${stderr}\n${error.message}` };
+    return { dom: "", dataset: null, pageErrors: [], timedOut: false, stderr: `${browser?.stderr() ?? ""}\n${error.message}` };
   } finally {
-    cdp?.close();
-    await cleanup();
+    await browser?.close();
   }
 }
 
@@ -510,10 +600,14 @@ function checkScenario(scenario, page, meta) {
     }
   }
 
-  // 6. 一句话结论存在且非空
+  // 6. 一句话结论：分析页必须存在且非空；工具页不显示
   const insight = parseInsight(dom);
-  if (insight.hidden) fail("一句话结论被隐藏（#insight hidden）");
-  if (insight.text.length < 5) fail(`一句话结论内容过短/为空：${JSON.stringify(insight.text)}`);
+  if (page.tool) {
+    if (!insight.hidden) fail("工具页不应显示一句话结论");
+  } else {
+    if (insight.hidden) fail("一句话结论被隐藏（#insight hidden）");
+    if (insight.text.length < 5) fail(`一句话结论内容过短/为空：${JSON.stringify(insight.text)}`);
+  }
 
   // 7. 表格行数与引擎结果一致
   const tableRows = countTableRows(dom);
@@ -527,22 +621,25 @@ function checkScenario(scenario, page, meta) {
   if (echarts === "ready") {
     if (!(charts >= page.charts)) fail(`图表 canvas 数量 ${charts}，期望至少 ${page.charts}`);
   } else if (echarts === "missing") {
-    if (!dom.includes("图表库未能从 CDN 加载")) {
+    // 没有图表的页面（数据导入）不需要图表降级提示
+    if (page.charts > 0 && !dom.includes("图表库未能从 CDN 加载")) {
       fail("ECharts 未加载，但页面没有图表降级提示（应提示 CDN 失败、表格仍可读）");
     }
   } else {
     fail(`无法判断 ECharts 状态（diagnostics.echarts=${JSON.stringify(diagnostics?.echarts)}）`);
   }
 
-  // 9. 该页关键内容存在（表格文字 / 面板标题 / 渠道名等）
-  for (const token of page.tokens) {
+  // 9. 该页关键内容存在（表格文字 / 面板标题 / 渠道名等）；
+  //    page.tokens 含演示数据专属数值，本机导入数据场景只校验 expect.tokens
+  const pageTokens = scenario.expect?.source === "import" ? [] : page.tokens;
+  for (const token of pageTokens) {
     if (!domText.includes(token)) fail(`页面内容缺少关键文本：${JSON.stringify(token)}`);
   }
 
   // 10. 当前层级导航高亮唯一且匹配
   const activeNav = countActiveNav(dom);
   if (activeNav !== 1) fail(`高亮导航数量 ${activeNav}，期望 1`);
-  if (!new RegExp(`class="nav-tab active"[^>]*data-route="${scenario.pageId}"`).test(dom)) {
+  if (!new RegExp(`class="nav-tab[^"]*\\bactive\\b[^"]*"[^>]*data-route="${scenario.pageId}"`).test(dom)) {
     fail(`导航未高亮 ${scenario.pageId}`);
   }
 
@@ -564,6 +661,26 @@ function checkScenario(scenario, page, meta) {
     }
   }
 
+  // 12. 数据来源 / 提示条 / 指标卡（本机数据注入场景）
+  const expect = scenario.expect ?? {};
+  if (expect.source && diagnostics?.source !== expect.source) {
+    fail(`数据来源 data-source=${JSON.stringify(diagnostics?.source)}，期望 ${JSON.stringify(expect.source)}`);
+  }
+  if (expect.metric && !(cards[0]?.value ?? "").includes(expect.metric)) {
+    fail(`首张指标卡=${JSON.stringify(cards[0]?.value)}，期望包含 ${JSON.stringify(expect.metric)}`);
+  }
+  const noticeTag = dom.match(/<div[^>]*id="notice-bar"[^>]*>/)?.[0] ?? "";
+  const noticeHidden = /(^|\s)hidden(\s|=|>)/.test(noticeTag);
+  const noticeText = stripTags(dom.match(/<span id="notice-text">([\s\S]*?)<\/span>/)?.[1] ?? "");
+  if (expect.notice) {
+    if (noticeHidden || !noticeText.includes(expect.notice)) fail(`缺少提示条：${JSON.stringify(expect.notice)}（实际 ${JSON.stringify(noticeText)}）`);
+  } else if (!noticeHidden) {
+    fail(`出现意外提示条：${JSON.stringify(noticeText)}`);
+  }
+  for (const token of expect.tokens ?? []) {
+    if (!domText.includes(token)) fail(`页面内容缺少关键文本：${JSON.stringify(token)}`);
+  }
+
   return {
     failures,
     info: {
@@ -576,6 +693,308 @@ function checkScenario(scenario, page, meta) {
       scrollWidth: diagnostics?.scrollWidth ?? "?",
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// 导入交互流程（CDP 驱动：下载模板 / 上传文件 / 确认 / 取消 / 恢复演示数据）
+// ---------------------------------------------------------------------------
+
+
+async function evaluate(cdp, expression) {
+  const { result, exceptionDetails } = await cdp.send("Runtime.evaluate", {
+    expression,
+    returnByValue: true,
+    awaitPromise: true,
+  });
+  if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
+  return result?.value;
+}
+
+/** 轮询表达式直到为真值，返回该值；超时抛错。 */
+async function waitFor(cdp, expression, label, timeoutMs = 10_000) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    try {
+      const value = await evaluate(cdp, expression);
+      if (value) return value;
+    } catch {
+      /* 导航中 */
+    }
+    await sleep(100);
+  }
+  const snapshot = await evaluate(cdp, `JSON.stringify({ route: ${Q.route}, source: ${Q.source}, metric: ${Q.metric}, status: document.getElementById('diagnostics')?.dataset.status })`).catch(() => "?");
+  throw new Error(`等待超时：${label}（当前 ${snapshot}）`);
+}
+
+// 每个表达式都加括号，便于用 && / .includes() 拼接时不受运算符优先级影响
+const Q = {
+  source: "(document.getElementById('diagnostics')?.dataset.source)",
+  metric: "(document.querySelector('.metric-card .metric-value')?.textContent ?? '')",
+  route: "(document.getElementById('diagnostics')?.dataset.route)",
+  resultState: "(document.getElementById('import-result')?.dataset.state ?? '')",
+  status: "(document.getElementById('import-status')?.textContent ?? '')",
+  issues: "JSON.stringify([...document.querySelectorAll('.issue-item')].map((li) => li.textContent))",
+  counts: "JSON.stringify([...document.querySelectorAll('[data-count]')].map((n) => n.textContent))",
+};
+
+/** 通过 CDP 给 #file-input 设置文件（会触发 change 事件）。 */
+async function uploadFiles(cdp, files) {
+  const { root } = await cdp.send("DOM.getDocument", { depth: 1 });
+  const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "#file-input" });
+  if (!nodeId) throw new Error("找不到 #file-input");
+  await cdp.send("DOM.setFileInputFiles", { nodeId, files });
+}
+
+async function openImportPage(cdp, baseUrl) {
+  await cdp.send("DOM.enable");
+  await cdp.send("Page.navigate", { url: `${baseUrl}/#/import` });
+  await waitFor(cdp, `${Q.route} === '#/import' && !!document.getElementById('file-input')`, "导入页就绪");
+}
+
+/** 按 sheet 写出 CSV（可选修改），返回文件路径列表。 */
+async function writeCsvSet(dir, prefix, mutate = () => {}) {
+  const sheets = structuredClone(denormalize(input));
+  mutate(sheets);
+  const files = [];
+  for (const [name, rows] of Object.entries(sheets)) {
+    const file = path.join(dir, `${prefix}-${name}.csv`);
+    await writeFile(file, toCSV(rows), "utf8");
+    files.push(file);
+  }
+  return files;
+}
+
+const FLOWS = [
+  {
+    id: "template-roundtrip",
+    label: "下载模板 → 原样上传 → 确认导入",
+    needsXlsx: true,
+    async run({ cdp, baseUrl, workDir, check }) {
+      await openImportPage(cdp, baseUrl);
+      const downloadDir = path.join(workDir, "download");
+      await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: downloadDir });
+      await evaluate(cdp, "document.getElementById('btn-template').click()");
+      const file = path.join(downloadDir, "收入分析数据模板.xlsx");
+      const end = Date.now() + 10_000;
+      let size = 0;
+      while (Date.now() < end) {
+        size = await readFile(file).then((b) => b.length).catch(() => 0);
+        if (size > 1000) break;
+        await sleep(100);
+      }
+      check(size > 1000, `模板未下载（${file}，${size} 字节）`);
+      if (size <= 1000) return;
+      await uploadFiles(cdp, [file]);
+      await waitFor(cdp, `${Q.resultState} === 'valid' || ${Q.resultState} === 'invalid'`, "校验结果");
+      const counts = JSON.parse(await evaluate(cdp, Q.counts));
+      check(counts.join() === "错误 0,警告 0", `模板原样上传应零错误零警告，实际 ${counts.join()}；${await evaluate(cdp, Q.issues)}`);
+      const sheetTitles = await evaluate(cdp, "[...document.querySelectorAll('.preview-title')].map((n) => n.firstChild.textContent.trim()).join()");
+      check(sheetTitles === "渠道,门店,品类,门店客流", `预览 sheet=${sheetTitles}`);
+      await evaluate(cdp, "document.getElementById('btn-confirm').click()");
+      await waitFor(cdp, `${Q.route} === '#/channel' && ${Q.source} === 'import'`, "导入后跳转看板");
+      const metric = await evaluate(cdp, Q.metric);
+      check(metric.includes("1000.00"), `导入模板后本期总收入=${metric}，期望与演示数据一致 1000.00`);
+      const label = await evaluate(cdp, "document.getElementById('period-label').textContent");
+      check(label.includes("收入分析数据模板.xlsx") && label.includes("导入于"), `页头未显示文件名 / 导入时间：${label}`);
+    },
+  },
+  {
+    id: "e2e",
+    label: "端到端：模板改 3 个数 → 看板 → 报告 PDF",
+    needsXlsx: true,
+    async run({ cdp, baseUrl, workDir, check }) {
+      await openImportPage(cdp, baseUrl);
+      const downloadDir = path.join(workDir, "download");
+      await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: downloadDir });
+      await evaluate(cdp, "document.getElementById('btn-template').click()");
+      const template = path.join(downloadDir, "收入分析数据模板.xlsx");
+      let bytes = null;
+      for (let i = 0; i < 100 && !(bytes?.length > 1000); i += 1) {
+        bytes = await readFile(template).catch(() => null);
+        await sleep(100);
+      }
+      check(bytes?.length > 1000, "模板未下载");
+      if (!(bytes?.length > 1000)) return;
+
+      // 像用户在 Excel 里一样改 3 个单元格（用页面里的 SheetJS 读写）：
+      // 渠道 C2 美团大众本期 460 → 480；门店 E2 门店1 本期 69.1 → 79.1；品类 E2 肉类本期收入 546.07 → 556.07
+      const edited = await evaluate(
+        cdp,
+        `(() => {
+          const wb = XLSX.read(${JSON.stringify(bytes.toString("base64"))}, { type: "base64" });
+          wb.Sheets["渠道"].C2 = { t: "n", v: 480 };
+          wb.Sheets["门店"].E2 = { t: "n", v: 79.1 };
+          wb.Sheets["品类"].E2 = { t: "n", v: 556.07 };
+          return XLSX.write(wb, { type: "base64", bookType: "xlsx" });
+        })()`,
+      );
+      const editedFile = path.join(workDir, "九月数据-已修改.xlsx");
+      await writeFile(editedFile, Buffer.from(edited, "base64"));
+      await uploadFiles(cdp, [editedFile]);
+      await waitFor(cdp, `${Q.resultState} === 'valid' || ${Q.resultState} === 'invalid'`, "校验结果");
+      const counts = JSON.parse(await evaluate(cdp, Q.counts));
+      check(counts.join() === "错误 0,警告 0", `修改后应零错误零警告（渠道 1020 vs 门店 1010.23 差 0.96% < 1%），实际 ${counts.join()}`);
+      await evaluate(cdp, "document.getElementById('btn-confirm').click()");
+      await waitFor(cdp, `${Q.route} === '#/channel' && ${Q.source} === 'import'`, "导入后跳转看板");
+
+      // 手算期望：本期 1000 + 20 = 1020.00；同比 240.44 + 20 = +260.44；增长率 260.44 / 759.56 = +34.29%；
+      // 同店本期 857.23 + 10 = 867.23，同店增长 (867.23 − 759.95) / 759.95 = +14.12%；新店占比 143 / 1010.23 = 14.16%
+      const expected = ["1020.00万元", "+260.44万元", "+34.29%", "+14.12%", "14.16%"];
+      const cards = JSON.parse(await evaluate(cdp, "JSON.stringify([...document.querySelectorAll('.metric-card .metric-value')].map((n) => n.textContent.replace(/\\s+/g, '')))"));
+      check(JSON.stringify(cards) === JSON.stringify(expected), `看板指标卡=${cards.join(" / ")}，手算期望 ${expected.join(" / ")}`);
+
+      await evaluate(cdp, "location.hash = '#/category'");
+      await waitFor(cdp, `${Q.route} === '#/category'`, "进入品类页");
+      const meat = await evaluate(cdp, "[...document.querySelectorAll('tbody tr')].find((tr) => tr.firstElementChild.textContent === '肉类')?.lastElementChild.textContent");
+      check(meat === "+168.07", `肉类全店收入差=${meat}，手算期望 556.07 − 388 = +168.07`);
+
+      await evaluate(cdp, "location.hash = '#/report'");
+      await waitFor(cdp, `${Q.route} === '#/report'`, "进入报告");
+      const reportCards = JSON.parse(await evaluate(cdp, "JSON.stringify([...document.querySelectorAll('.report-metric-value')].map((n) => n.textContent.replace(/\\s+/g, '')))"));
+      check(JSON.stringify(reportCards) === JSON.stringify(expected), `报告指标=${reportCards.join(" / ")}，应与看板一致`);
+      const source = await evaluate(cdp, "document.getElementById('report-source').textContent");
+      check(source === "导入数据：九月数据-已修改.xlsx", `报告封面数据来源=${source}`);
+
+      await evaluate(cdp, "window.dispatchEvent(new Event('beforeprint'))");
+      const pdf = await cdp.send("Page.printToPDF", { preferCSSPageSize: true, printBackground: true });
+      const pdfBytes = Buffer.from(pdf.data, "base64");
+      const pages = (pdfBytes.toString("latin1").match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+      check(pages === 7, `报告 PDF 页数=${pages}，期望 7（封面总览 + 5 章 + 结论汇总，各章新起一页）`);
+      const box = pdfBytes.toString("latin1").match(/\/MediaBox\s*\[\s*0 0 ([\d.]+) ([\d.]+)/);
+      check(box && Math.abs(Number(box[1]) - 595) < 2 && Math.abs(Number(box[2]) - 842) < 2, `PDF 纸张不是 A4 纵向：${box?.slice(1).join("×")}`);
+      await evaluate(cdp, "window.dispatchEvent(new Event('afterprint'))");
+    },
+  },
+  {
+    id: "invalid-csv",
+    label: "上传错误 CSV → 错误清单 / 禁用导入",
+    async run({ cdp, baseUrl, workDir, check }) {
+      await openImportPage(cdp, baseUrl);
+      const files = await writeCsvSet(workDir, "bad", (sheets) => {
+        sheets["渠道"][4][2] = "四百";
+        sheets["门店客流"][3][0] = "门店99";
+      });
+      await uploadFiles(cdp, files);
+      await waitFor(cdp, `${Q.resultState} === 'invalid'`, "校验未通过");
+      const issues = JSON.parse(await evaluate(cdp, Q.issues));
+      check(issues.includes("渠道 · 第 5 行 · 本期收入：「四百」不是数字"), `错误清单缺少数值错误：${issues.join(" | ")}`);
+      check(issues.some((text) => text.startsWith("门店客流 · 第 4 行 · 门店") && text.includes("门店99")), `错误清单缺少跨表错误：${issues.join(" | ")}`);
+      check(await evaluate(cdp, "document.getElementById('btn-confirm').disabled"), "存在错误时「确认导入」应禁用");
+      check((await evaluate(cdp, Q.source)) === "demo", "校验失败不应改变看板数据");
+    },
+  },
+  {
+    id: "modified-import-reset",
+    label: "修改数值导入 → 看板变化 → 恢复演示数据",
+    async run({ cdp, baseUrl, workDir, check }) {
+      await openImportPage(cdp, baseUrl);
+      const files = await writeCsvSet(workDir, "edit", (sheets) => {
+        sheets["渠道"][1][2] = "500"; // 美团大众本期 460 → 500
+        sheets["渠道"][2][1] = "0"; // 扫码支付同期为 0 → 警告
+      });
+      await uploadFiles(cdp, files);
+      await waitFor(cdp, `${Q.resultState} === 'valid'`, "校验通过");
+      const counts = JSON.parse(await evaluate(cdp, Q.counts));
+      check(counts[0] === "错误 0" && counts[1] !== "警告 0", `期望 0 错误、有警告，实际 ${counts.join()}`);
+      await evaluate(cdp, "document.getElementById('btn-confirm').click()");
+      await waitFor(cdp, `${Q.route} === '#/channel' && ${Q.source} === 'import'`, "导入后跳转看板");
+      const metric = await evaluate(cdp, Q.metric);
+      check(metric.includes("1040.00"), `导入后本期总收入=${metric}，期望 1040.00`);
+      const insight = await evaluate(cdp, "document.getElementById('insight-text').textContent");
+      // 扫码支付同期改为 0 后本期 316 全部计为增量，成为正向贡献最大的渠道
+      check(insight.includes("扫码支付") && insight.includes("+316.00"), `结论未随数据变化：${insight}`);
+      const growth = await evaluate(cdp, "[...document.querySelectorAll('tbody tr')].find((tr) => tr.textContent.includes('扫码支付'))?.lastElementChild.textContent");
+      check(growth === "—", `同期为 0 的增减率应显示 —，实际 ${growth}`);
+
+      // 刷新后仍为导入数据
+      await cdp.send("Page.reload");
+      await waitFor(cdp, `${Q.source} === 'import' && ${Q.metric}.includes('1040.00')`, "刷新后保留导入数据");
+
+      await evaluate(cdp, "document.getElementById('source-reset').click()");
+      await waitFor(cdp, `${Q.source} === 'demo'`, "恢复演示数据");
+      check((await evaluate(cdp, Q.metric)).includes("1000.00"), "恢复后本期总收入应为 1000.00");
+      check((await evaluate(cdp, "document.getElementById('source-badge').textContent")) === "演示数据", "恢复后徽章应为「演示数据」");
+      check((await evaluate(cdp, `localStorage.getItem(${JSON.stringify(STORAGE_KEY)})`)) === null, "恢复后本机数据应被清除");
+    },
+  },
+  {
+    id: "derived-import",
+    label: "同店销量留空导入 → 折算标注",
+    async run({ cdp, baseUrl, workDir, check }) {
+      await openImportPage(cdp, baseUrl);
+      const files = await writeCsvSet(workDir, "derive", (sheets) => {
+        for (const row of sheets["品类"].slice(1)) row[5] = "";
+      });
+      await uploadFiles(cdp, files);
+      await waitFor(cdp, `${Q.resultState} === 'valid'`, "校验通过");
+      const tags = await evaluate(cdp, "document.querySelectorAll('.derived-tag').length");
+      check(tags > 0, "预览中未标注折算字段");
+      await evaluate(cdp, "document.getElementById('btn-confirm').click()");
+      await waitFor(cdp, `${Q.source} === 'import'`, "导入完成");
+      const footer = await evaluate(cdp, "document.getElementById('footer-derived').hidden ? '' : document.getElementById('footer-derived').textContent");
+      check(footer.includes("折算"), `页脚未注明折算口径：${JSON.stringify(footer)}`);
+      await evaluate(cdp, "location.hash = '#/report'");
+      await waitFor(cdp, `${Q.route} === '#/report'`, "进入报告");
+      const notes = await evaluate(cdp, "[...document.querySelectorAll('[data-chapter=category] .report-note, [data-chapter=traffic] .report-note')].map((n) => n.textContent).join(' | ')");
+      check((notes.match(/同店销量由系统折算/g) ?? []).length === 2, `报告品类 / 客流章节缺少折算注释：${notes}`);
+    },
+  },
+  {
+    id: "cancel-and-unsupported",
+    label: "取消导入 / 不支持的文件格式",
+    async run({ cdp, baseUrl, workDir, check }) {
+      await openImportPage(cdp, baseUrl);
+      await uploadFiles(cdp, await writeCsvSet(workDir, "cancel"));
+      await waitFor(cdp, `${Q.resultState} === 'valid'`, "校验通过");
+      await evaluate(cdp, "document.getElementById('btn-cancel').click()");
+      check((await evaluate(cdp, Q.resultState)) === "cancelled", "取消后应显示已取消");
+      check((await evaluate(cdp, Q.source)) === "demo", "取消后看板数据应保持不变");
+
+      const pdf = path.join(workDir, "report.pdf");
+      await writeFile(pdf, "%PDF-1.4");
+      await uploadFiles(cdp, [pdf]);
+      await waitFor(cdp, `${Q.resultState} === 'rejected'`, "拒绝不支持格式");
+      check((await evaluate(cdp, Q.status)) === "仅支持 xlsx / csv 模板文件", `提示文字=${await evaluate(cdp, Q.status)}`);
+      check((await evaluate(cdp, Q.source)) === "demo", "上传失败后看板数据应保持不变");
+    },
+  },
+];
+
+async function runFlow(flow, baseUrl) {
+  const failures = [];
+  const check = (ok, message) => {
+    if (!ok) failures.push(message);
+  };
+  const workDir = await mkdtemp(path.join(os.tmpdir(), "revenue-smoke-flow-"));
+  let browser = null;
+  try {
+    browser = await launchPage();
+    if (!browser.cdp) {
+      failures.push(`Chrome 启动失败：${browser.stderr().slice(0, 300)}`);
+      return failures;
+    }
+    if (flow.needsXlsx) {
+      await browser.cdp.send("Page.navigate", { url: `${baseUrl}/#/import` });
+      await waitFor(browser.cdp, `${Q.route} === '#/import'`, "导入页就绪");
+      const ready = await evaluate(browser.cdp, "Boolean(window.XLSX)");
+      if (!ready) {
+        // SheetJS CDN 不可达：断言降级为 CSV 下载入口
+        const fallback = await evaluate(browser.cdp, "!document.getElementById('csv-fallback').hidden && document.querySelectorAll('[data-csv]').length");
+        check(fallback === 5, "SheetJS 未加载时应显示 5 个 CSV 模板下载按钮");
+        return failures.length ? failures : ["SKIP"];
+      }
+    }
+    await flow.run({ cdp: browser.cdp, baseUrl, workDir, check });
+    if (browser.pageErrors.length) failures.push(`页面出现未捕获脚本异常：${browser.pageErrors.join(" | ")}`);
+    const errorBar = await evaluate(browser.cdp, "document.getElementById('error-bar').hidden");
+    if (!errorBar) failures.push(`页面出现错误条：${await evaluate(browser.cdp, "document.getElementById('error-bar').textContent")}`);
+  } catch (error) {
+    failures.push(error.message);
+  } finally {
+    await browser?.close();
+    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+  return failures;
 }
 
 // ---------------------------------------------------------------------------
@@ -599,7 +1018,7 @@ async function main() {
   console.log(
     `- ECharts：${BLOCK_ECHARTS ? "模拟 CDN 不可达（验收降级提示，不联网加载图表库）" : "正常联网加载（CDN: cdn.jsdelivr.net）"}`,
   );
-  console.log(`- 场景：${SCENARIOS.length} 个（5 个分析页 + 无 hash + 非法 hash）`);
+  console.log(`- 场景：${SCENARIOS.length} 个页面场景（5 个分析页 + 无 hash + 非法 hash + 2 个工具页 + 本机数据注入）+ 导入交互流程`);
   console.log("");
 
   try {
@@ -613,6 +1032,7 @@ async function main() {
 
   const { server, baseUrl } = await startStaticServer();
   const results = [];
+  const flowResults = [];
   let echartsMode = "unknown";
 
   try {
@@ -620,11 +1040,20 @@ async function main() {
       const page = PAGES[scenario.pageId];
       const url = `${baseUrl}${scenario.path}`;
       process.stdout.write(`→ 冒烟：${scenario.label}（${url}）… `);
-      const meta = await renderPage(url);
+      const meta = await renderPage(url, { storage: scenario.storage });
       const { failures, info } = checkScenario(scenario, page, meta);
       if (info.echarts && info.echarts !== "unknown") echartsMode = info.echarts;
       results.push({ ...scenario, page, expectedRoute: page.hash, failures, info });
       console.log(failures.length === 0 ? "PASS" : `FAIL（${failures.length}）`);
+    }
+
+    console.log("");
+    for (const flow of FLOWS) {
+      process.stdout.write(`→ 流程：${flow.label} … `);
+      const failures = await runFlow(flow, baseUrl);
+      const skipped = failures.length === 1 && failures[0] === "SKIP";
+      flowResults.push({ ...flow, failures: skipped ? [] : failures, skipped });
+      console.log(skipped ? "SKIP（SheetJS 未加载，已验证 CSV 降级入口）" : failures.length === 0 ? "PASS" : `FAIL（${failures.length}）`);
     }
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -635,7 +1064,7 @@ async function main() {
   console.log("");
 
   const headers = ["场景", "期望路由", "实际路由", "表格行", "图表", "结论"];
-  const widths = [24, 14, 14, 11, 8, 6];
+  const widths = [26, 14, 14, 11, 8, 6];
   console.log(headers.map((header, index) => padEnd(header, widths[index])).join("  "));
   console.log(widths.map((width) => "─".repeat(width)).join("  "));
   for (const row of results) {
@@ -658,6 +1087,12 @@ async function main() {
     console.log(`✖ ${row.label}（${row.expectedRoute}）失败原因：`);
     for (const failure of row.failures) console.log(`  - ${failure}`);
   }
+  const failedFlows = flowResults.filter((row) => row.failures.length > 0);
+  for (const row of failedFlows) {
+    console.log("");
+    console.log(`✖ 流程「${row.label}」失败原因：`);
+    for (const failure of row.failures) console.log(`  - ${failure}`);
+  }
 
   console.log("");
   console.log(
@@ -672,10 +1107,12 @@ async function main() {
     console.log("      本次冒烟对降级模式判通过；联网环境复跑可验证 canvas 渲染。");
   }
   console.log(
-    `汇总：${SCENARIOS.length} 个场景，通过 ${results.length - failed.length}，失败 ${failed.length}。`,
+    `汇总：${SCENARIOS.length} 个场景，通过 ${results.length - failed.length}，失败 ${failed.length}；` +
+      `${FLOWS.length} 个导入流程，通过 ${flowResults.filter((r) => !r.skipped && r.failures.length === 0).length}，` +
+      `跳过 ${flowResults.filter((r) => r.skipped).length}，失败 ${failedFlows.length}。`,
   );
 
-  if (failed.length > 0) {
+  if (failed.length > 0 || failedFlows.length > 0) {
     process.exitCode = 1;
   }
 }
