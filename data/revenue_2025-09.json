@@ -1,0 +1,410 @@
+{
+  "_说明": "模拟数据，源自课程 Excel《利润桥及毛利率分析-高维第二期261003》第二步两个 sheet。渠道/门店/品类收入单位万元；品类销量单位份；门店客单单位元。base=2024年9月（同期），current=2025年9月（本期）。same_store_current_qty=按同店收入占比折算的本期同店销量。",
+  "period": {
+    "base": "2024-09",
+    "current": "2025-09"
+  },
+  "same_store_share": 0.857,
+  "channels": [
+    {
+      "channel": "美团大众",
+      "base": 336,
+      "current": 460
+    },
+    {
+      "channel": "扫码支付",
+      "base": 252,
+      "current": 316
+    },
+    {
+      "channel": "线上活动优惠",
+      "base": 82,
+      "current": 101
+    },
+    {
+      "channel": "美团外卖",
+      "base": 46,
+      "current": 60
+    },
+    {
+      "channel": "饿了外卖",
+      "base": 27.55,
+      "current": 32
+    },
+    {
+      "channel": "抖音",
+      "base": 3,
+      "current": 16
+    },
+    {
+      "channel": "会员储值消费",
+      "base": 5,
+      "current": 7
+    },
+    {
+      "channel": "堂食现金",
+      "base": 3.5,
+      "current": 3.58
+    },
+    {
+      "channel": "招商银行",
+      "base": 3.5,
+      "current": 3
+    },
+    {
+      "channel": "京东外卖",
+      "base": 1.01,
+      "current": 1.42
+    }
+  ],
+  "stores": [
+    {
+      "region": "区域一",
+      "store": "门店1",
+      "type": "同店",
+      "base": 58,
+      "current": 69.1
+    },
+    {
+      "region": "区域一",
+      "store": "门店2",
+      "type": "同店",
+      "base": 37,
+      "current": 48.21
+    },
+    {
+      "region": "区域一",
+      "store": "门店3",
+      "type": "同店",
+      "base": 83,
+      "current": 91.45
+    },
+    {
+      "region": "区域一",
+      "store": "门店4",
+      "type": "同店",
+      "base": 61,
+      "current": 72
+    },
+    {
+      "region": "区域一",
+      "store": "门店5",
+      "type": "同店",
+      "base": 82,
+      "current": 89
+    },
+    {
+      "region": "区域二",
+      "store": "门店6",
+      "type": "同店",
+      "base": 44,
+      "current": 53.74
+    },
+    {
+      "region": "区域二",
+      "store": "门店7",
+      "type": "同店",
+      "base": 62,
+      "current": 82.19
+    },
+    {
+      "region": "区域二",
+      "store": "门店8",
+      "type": "同店",
+      "base": 54.03,
+      "current": 62.39
+    },
+    {
+      "region": "区域二",
+      "store": "门店9",
+      "type": "同店",
+      "base": 54.26,
+      "current": 54.5
+    },
+    {
+      "region": "区域二",
+      "store": "门店10",
+      "type": "同店",
+      "base": 54.3,
+      "current": 59.47
+    },
+    {
+      "region": "区域三",
+      "store": "门店11",
+      "type": "同店",
+      "base": 39,
+      "current": 42.08
+    },
+    {
+      "region": "区域三",
+      "store": "门店12",
+      "type": "同店",
+      "base": 59.23,
+      "current": 56.1
+    },
+    {
+      "region": "区域三",
+      "store": "门店13",
+      "type": "同店",
+      "base": 72.13,
+      "current": 77
+    },
+    {
+      "region": "区域三",
+      "store": "新店1",
+      "type": "新店",
+      "base": 0,
+      "current": 80
+    },
+    {
+      "region": "区域三",
+      "store": "新店2",
+      "type": "新店",
+      "base": 0,
+      "current": 63
+    }
+  ],
+  "categories": [
+    {
+      "category": "肉类",
+      "base": {
+        "qty": 113280,
+        "revenue": 388
+      },
+      "current": {
+        "qty": 152127,
+        "revenue": 546.07
+      },
+      "same_store_current_qty": 130377.8413
+    },
+    {
+      "category": "锅底类",
+      "base": {
+        "qty": 24010,
+        "revenue": 53
+      },
+      "current": {
+        "qty": 23426,
+        "revenue": 62.09
+      },
+      "same_store_current_qty": 20076.8523
+    },
+    {
+      "category": "涮品类",
+      "base": {
+        "qty": 80860,
+        "revenue": 141
+      },
+      "current": {
+        "qty": 107684,
+        "revenue": 210.86
+      },
+      "same_store_current_qty": 92288.7289
+    },
+    {
+      "category": "主食类",
+      "base": {
+        "qty": 27658,
+        "revenue": 76
+      },
+      "current": {
+        "qty": 37724,
+        "revenue": 45.81
+      },
+      "same_store_current_qty": 32330.7085
+    },
+    {
+      "category": "凉菜类",
+      "base": {
+        "qty": 17511,
+        "revenue": 15
+      },
+      "current": {
+        "qty": 5607,
+        "revenue": 8.17
+      },
+      "same_store_current_qty": 4805.3834
+    },
+    {
+      "category": "小料类",
+      "base": {
+        "qty": 43251,
+        "revenue": 38
+      },
+      "current": {
+        "qty": 81296,
+        "revenue": 77.16
+      },
+      "same_store_current_qty": 69673.3452
+    },
+    {
+      "category": "饮品",
+      "base": {
+        "qty": 28668,
+        "revenue": 43
+      },
+      "current": {
+        "qty": 30406,
+        "revenue": 49
+      },
+      "same_store_current_qty": 26058.9418
+    },
+    {
+      "category": "其它",
+      "base": {
+        "qty": 62412,
+        "revenue": 6
+      },
+      "current": {
+        "qty": 78077,
+        "revenue": 1
+      },
+      "same_store_current_qty": 66914.5564
+    }
+  ],
+  "store_traffic": [
+    {
+      "store": "门店1",
+      "current": {
+        "traffic": 5617.8862,
+        "ticket": 123
+      },
+      "base": {
+        "traffic": 4750,
+        "ticket": 122
+      }
+    },
+    {
+      "store": "门店2",
+      "current": {
+        "traffic": 3514.1045,
+        "ticket": 137.19
+      },
+      "base": {
+        "traffic": 2700,
+        "ticket": 136
+      }
+    },
+    {
+      "store": "门店3",
+      "current": {
+        "traffic": 6996.4043,
+        "ticket": 130.71
+      },
+      "base": {
+        "traffic": 6420,
+        "ticket": 130
+      }
+    },
+    {
+      "store": "门店4",
+      "current": {
+        "traffic": 5371.9317,
+        "ticket": 134.03
+      },
+      "base": {
+        "traffic": 4610,
+        "ticket": 133
+      }
+    },
+    {
+      "store": "门店5",
+      "current": {
+        "traffic": 7377.321,
+        "ticket": 120.64
+      },
+      "base": {
+        "traffic": 6850,
+        "ticket": 120
+      }
+    },
+    {
+      "store": "门店6",
+      "current": {
+        "traffic": 3898.4403,
+        "ticket": 137.85
+      },
+      "base": {
+        "traffic": 3198.5401,
+        "ticket": 137
+      }
+    },
+    {
+      "store": "门店7",
+      "current": {
+        "traffic": 6738.5423,
+        "ticket": 121.97
+      },
+      "base": {
+        "traffic": 5076.2295,
+        "ticket": 122
+      }
+    },
+    {
+      "store": "门店8",
+      "current": {
+        "traffic": 4710.4568,
+        "ticket": 132.45
+      },
+      "base": {
+        "traffic": 4124.4275,
+        "ticket": 131
+      }
+    },
+    {
+      "store": "门店9",
+      "current": {
+        "traffic": 3953.5727,
+        "ticket": 137.85
+      },
+      "base": {
+        "traffic": 3960.5839,
+        "ticket": 137
+      }
+    },
+    {
+      "store": "门店10",
+      "current": {
+        "traffic": 5039.8305,
+        "ticket": 118
+      },
+      "base": {
+        "traffic": 4601.6949,
+        "ticket": 118
+      }
+    },
+    {
+      "store": "门店11",
+      "current": {
+        "traffic": 3307.656,
+        "ticket": 127.22
+      },
+      "base": {
+        "traffic": 3073.8095,
+        "ticket": 126
+      }
+    },
+    {
+      "store": "门店12",
+      "current": {
+        "traffic": 4276.2406,
+        "ticket": 131.19
+      },
+      "base": {
+        "traffic": 4556.1538,
+        "ticket": 130
+      }
+    },
+    {
+      "store": "门店13",
+      "current": {
+        "traffic": 5763.9045,
+        "ticket": 133.59
+      },
+      "base": {
+        "traffic": 5423.3083,
+        "ticket": 133
+      }
+    }
+  ]
+}

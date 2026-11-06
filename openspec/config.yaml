@@ -1,0 +1,37 @@
+schema: spec-driven
+
+context: |
+  Project: 餐饮经营分析系统 · 收入分析模块 demo（canyin-revenue-demo）。
+  用途：营销课演示 + 未来商用产品（目标客单 6 万）的第一个模块原型。
+  业务来源：课程 Excel《利润桥及毛利率分析-高维第二期261003》的
+    「第二步-餐饮收入结构分析」「第二步-收入异动分析」两个 sheet，
+    以及 PPT《高维学堂经营分析与科学决策月度分析模版20261002》第 15-29 页。
+  分析链路（五层下钻）：渠道结构 → 同店/新店 → 区域/门店排名 → 品类量价因素 →
+    客流×人均销量×单价 / 门店客流×客单，每层输出"一句话结论"。
+  因素分析统一用连环替代法：先换量、再换价，每步 = 替换后 − 替换前，顺序不能乱。
+  Tech stack: 纯静态网页（HTML + 原生 JS ES Module + ECharts CDN），无构建步骤；
+    计算逻辑集中在 src/engine/，用 Node 24 自带 node:test 测试。
+  Data: data/revenue_2025-09.json 为模拟输入；data/golden_expected.json 为
+    Excel 公式重算出的验收基准，计算结果与基准偏差 MUST <= 0.01。
+  Roles: 见仓库根 AGENTS.md（产品/数据/前端/测试四个角色）。
+  Language: zh-CN
+  All artifacts must be written in zh-CN.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+rules:
+  proposal:
+    - 写清楚本次变更对应 Excel 哪个表、PPT 哪一页
+    - 明确写出 Out of scope
+  tasks:
+    - 每个任务标注负责角色：[产品] [数据] [前端] [测试]
+    - 单个任务控制在 2 小时内
+    - 涉及计算的任务必须有对应的 golden 对比测试任务
+
+operations:
+  apply:
+    guidance:
+      - 只改本角色负责的目录（见 AGENTS.md）
+      - 完成后运行 npm test，全部通过才能勾选任务
+  archive:
+    guidance:
+      - 归档前确认 npm test 通过，并在飞书汇报一句话结果

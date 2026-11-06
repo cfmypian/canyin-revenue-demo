@@ -1,0 +1,14 @@
+{
+  "name": "canyin-revenue-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "餐饮经营分析系统 · 收入分析模块 demo",
+  "type": "module",
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "scripts": {
+    "test": "node --test tests/",
+    "start": "npx --yes http-server@14.1.1 -p 8080 -c-1 ."
+  }
+}

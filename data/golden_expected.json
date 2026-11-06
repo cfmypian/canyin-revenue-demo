@@ -1,0 +1,370 @@
+{
+  "_说明": "由原课程 Excel 公式（pycel 引擎重算）得出的结果，作为测试 agent 的验收基准。金额单位万元，门店客流客单表单位为元。系统计算值与此偏差须 <=0.01。",
+  "channel": {
+    "base_total": 759.56,
+    "current_total": 1000.0,
+    "diff": 240.44,
+    "growth_rate": 0.3166
+  },
+  "store_mix": {
+    "same_store_base": 759.95,
+    "same_store_current": 857.23,
+    "same_store_diff": 97.28,
+    "same_store_growth": 0.128,
+    "new_store_current": 143,
+    "total_current": 1000.23
+  },
+  "samestore_channel_current": [
+    {
+      "channel": "美团大众",
+      "same_store": 394.2351,
+      "diff_vs_base": 58.2351,
+      "new_store": 65.7649
+    },
+    {
+      "channel": "扫码支付",
+      "same_store": 270.8224,
+      "diff_vs_base": 18.8224,
+      "new_store": 45.1776
+    },
+    {
+      "channel": "线上活动优惠",
+      "same_store": 86.5603,
+      "diff_vs_base": 4.5603,
+      "new_store": 14.4397
+    },
+    {
+      "channel": "美团外卖",
+      "same_store": 51.422,
+      "diff_vs_base": 5.422,
+      "new_store": 8.578
+    },
+    {
+      "channel": "饿了外卖",
+      "same_store": 27.4251,
+      "diff_vs_base": -0.1249,
+      "new_store": 4.5749
+    },
+    {
+      "channel": "抖音",
+      "same_store": 13.7125,
+      "diff_vs_base": 10.7125,
+      "new_store": 2.2875
+    },
+    {
+      "channel": "会员储值消费",
+      "same_store": 5.9992,
+      "diff_vs_base": 0.9992,
+      "new_store": 1.0008
+    },
+    {
+      "channel": "堂食现金",
+      "same_store": 3.0682,
+      "diff_vs_base": -0.4318,
+      "new_store": 0.5118
+    },
+    {
+      "channel": "招商银行",
+      "same_store": 2.5711,
+      "diff_vs_base": -0.9289,
+      "new_store": 0.4289
+    },
+    {
+      "channel": "京东外卖",
+      "same_store": 1.217,
+      "diff_vs_base": 0.207,
+      "new_store": 0.203
+    }
+  ],
+  "category_qty_price": [
+    {
+      "category": "肉类",
+      "qty_effect": 133.0565,
+      "price_effect": 25.0135,
+      "total": 158.07
+    },
+    {
+      "category": "锅底类",
+      "qty_effect": -1.2891,
+      "price_effect": 10.3791,
+      "total": 9.09
+    },
+    {
+      "category": "涮品类",
+      "qty_effect": 46.7745,
+      "price_effect": 23.0855,
+      "total": 69.86
+    },
+    {
+      "category": "主食类",
+      "qty_effect": 27.6598,
+      "price_effect": -57.8498,
+      "total": -30.19
+    },
+    {
+      "category": "凉菜类",
+      "qty_effect": -10.197,
+      "price_effect": 3.367,
+      "total": -6.83
+    },
+    {
+      "category": "小料类",
+      "qty_effect": 33.426,
+      "price_effect": 5.734,
+      "total": 39.16
+    },
+    {
+      "category": "饮品",
+      "qty_effect": 2.6069,
+      "price_effect": 3.3931,
+      "total": 6.0
+    },
+    {
+      "category": "其它",
+      "qty_effect": 1.506,
+      "price_effect": -6.506,
+      "total": -5.0
+    },
+    {
+      "category": "合计",
+      "qty_effect": 233.5435,
+      "price_effect": 6.6165,
+      "total": 240.16
+    }
+  ],
+  "samestore_category_qty_price": [
+    {
+      "category": "肉类",
+      "qty_effect": 58.5625,
+      "price_effect": 21.4374,
+      "total": 79.9999
+    },
+    {
+      "category": "锅底类",
+      "qty_effect": -8.6821,
+      "price_effect": 8.8953,
+      "total": 0.2132
+    },
+    {
+      "category": "涮品类",
+      "qty_effect": 19.9289,
+      "price_effect": 19.7851,
+      "total": 39.714
+    },
+    {
+      "category": "主食类",
+      "qty_effect": 12.8399,
+      "price_effect": -49.5792,
+      "total": -36.7393
+    },
+    {
+      "category": "凉菜类",
+      "qty_effect": -10.8837,
+      "price_effect": 2.8856,
+      "total": -7.998
+    },
+    {
+      "category": "小料类",
+      "qty_effect": 23.2145,
+      "price_effect": 4.9142,
+      "total": 28.1287
+    },
+    {
+      "category": "饮品",
+      "qty_effect": -3.9134,
+      "price_effect": 2.908,
+      "total": -1.0054
+    },
+    {
+      "category": "其它",
+      "qty_effect": 0.4329,
+      "price_effect": -5.5758,
+      "total": -5.143
+    },
+    {
+      "category": "合计",
+      "qty_effect": 91.4995,
+      "price_effect": 5.6705,
+      "total": 97.17
+    }
+  ],
+  "traffic_percapita_price": [
+    {
+      "category": "肉类",
+      "traffic_effect": 47.2149,
+      "per_capita_qty_effect": 11.3476,
+      "price_effect": 21.4374,
+      "total": 79.9999
+    },
+    {
+      "category": "锅底类",
+      "traffic_effect": 6.4495,
+      "per_capita_qty_effect": -15.1315,
+      "price_effect": 8.8953,
+      "total": 0.2132
+    },
+    {
+      "category": "涮品类",
+      "traffic_effect": 17.158,
+      "per_capita_qty_effect": 2.7709,
+      "price_effect": 19.7851,
+      "total": 39.714
+    },
+    {
+      "category": "主食类",
+      "traffic_effect": 9.2483,
+      "per_capita_qty_effect": 3.5916,
+      "price_effect": -49.5792,
+      "total": -36.7393
+    },
+    {
+      "category": "凉菜类",
+      "traffic_effect": 1.8253,
+      "per_capita_qty_effect": -12.709,
+      "price_effect": 2.8856,
+      "total": -7.998
+    },
+    {
+      "category": "小料类",
+      "traffic_effect": 4.6241,
+      "per_capita_qty_effect": 18.5903,
+      "price_effect": 4.9142,
+      "total": 28.1287
+    },
+    {
+      "category": "饮品",
+      "traffic_effect": 5.2326,
+      "per_capita_qty_effect": -9.146,
+      "price_effect": 2.908,
+      "total": -1.0054
+    },
+    {
+      "category": "其它",
+      "traffic_effect": 0.7301,
+      "per_capita_qty_effect": -0.2973,
+      "price_effect": -5.5758,
+      "total": -5.143
+    },
+    {
+      "category": "合计",
+      "traffic_effect": 92.4829,
+      "per_capita_qty_effect": 0.0,
+      "price_effect": 5.6705,
+      "total": 97.17
+    }
+  ],
+  "store_traffic_ticket_yuan": [
+    {
+      "store": "门店1",
+      "revenue_current": 691000.0,
+      "revenue_base": 579500,
+      "traffic_effect": 105882.1138,
+      "ticket_effect": 5617.8862,
+      "total": 111500.0
+    },
+    {
+      "store": "门店2",
+      "revenue_current": 482100.0,
+      "revenue_base": 367200,
+      "traffic_effect": 110718.2156,
+      "ticket_effect": 4181.7844,
+      "total": 114900.0
+    },
+    {
+      "store": "门店3",
+      "revenue_current": 914500.0,
+      "revenue_base": 834600,
+      "traffic_effect": 74932.553,
+      "ticket_effect": 4967.447,
+      "total": 79900.0
+    },
+    {
+      "store": "门店4",
+      "revenue_current": 720000.0,
+      "revenue_base": 613130,
+      "traffic_effect": 101336.9104,
+      "ticket_effect": 5533.0896,
+      "total": 106870.0
+    },
+    {
+      "store": "门店5",
+      "revenue_current": 890000.0,
+      "revenue_base": 822000,
+      "traffic_effect": 63278.5146,
+      "ticket_effect": 4721.4854,
+      "total": 68000.0
+    },
+    {
+      "store": "门店6",
+      "revenue_current": 537400.0,
+      "revenue_base": 438200.0,
+      "traffic_effect": 95886.3257,
+      "ticket_effect": 3313.6743,
+      "total": 99200.0
+    },
+    {
+      "store": "门店7",
+      "revenue_current": 821900.0,
+      "revenue_base": 619300.0,
+      "traffic_effect": 202802.1563,
+      "ticket_effect": -202.1563,
+      "total": 202600.0
+    },
+    {
+      "store": "门店8",
+      "revenue_current": 623900.0,
+      "revenue_base": 540300.0,
+      "traffic_effect": 76769.8377,
+      "ticket_effect": 6830.1623,
+      "total": 83600.0
+    },
+    {
+      "store": "门店9",
+      "revenue_current": 545000.0,
+      "revenue_base": 542600.0,
+      "traffic_effect": -960.5368,
+      "ticket_effect": 3360.5368,
+      "total": 2400.0
+    },
+    {
+      "store": "门店10",
+      "revenue_current": 594700.0,
+      "revenue_base": 543000.0,
+      "traffic_effect": 51700.0,
+      "ticket_effect": 0.0,
+      "total": 51700.0
+    },
+    {
+      "store": "门店11",
+      "revenue_current": 420800.0,
+      "revenue_base": 387300.0,
+      "traffic_effect": 29464.6596,
+      "ticket_effect": 4035.3404,
+      "total": 33500.0
+    },
+    {
+      "store": "门店12",
+      "revenue_current": 561000.0,
+      "revenue_base": 592300.0,
+      "traffic_effect": -36388.7263,
+      "ticket_effect": 5088.7263,
+      "total": -31300.0
+    },
+    {
+      "store": "门店13",
+      "revenue_current": 770000.0,
+      "revenue_base": 721300.0,
+      "traffic_effect": 45299.2964,
+      "ticket_effect": 3400.7036,
+      "total": 48700.0
+    },
+    {
+      "store": "同店对比",
+      "revenue_current": 8572300.0,
+      "revenue_base": 7600730.0,
+      "traffic_effect": 920721.32,
+      "ticket_effect": 50848.68,
+      "total": 971570.0
+    }
+  ]
+}
