@@ -9,21 +9,30 @@
     <link rel="stylesheet" href="./src/web/styles.css" />
     <!-- ECharts 走 CDN，零构建、零 npm 依赖；加载失败时表格仍可读，图表位置降级提示 -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <!-- SheetJS 固定版本 0.20.3（浏览器内读写 xlsx，文件不上传）；加载失败时导入页降级为 CSV。
+         未加 SRI：该 CDN 对同一 URL 返回的字节不稳定，integrity 校验会间歇失败。 -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   </head>
   <body>
     <!-- 全局错误条：window.onerror / unhandledrejection 兜底时显示 -->
     <div id="error-bar" class="error-bar" role="alert" hidden></div>
+    <!-- 信息提示条（非错误）：本机导入数据失效回退、保存失败等 -->
+    <div id="notice-bar" class="notice-bar" role="status" hidden>
+      <span id="notice-text"></span>
+      <button type="button" id="notice-close" class="notice-close" aria-label="关闭提示">×</button>
+    </div>
 
     <div class="app" id="app">
       <header class="topbar">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">收</span>
           <div class="brand-text">
-            <p class="brand-title">餐饮收入分析看板</p>
+            <p class="brand-title">餐饮收入分析看板 <span class="source-badge is-demo" id="source-badge">演示数据</span>
+              <button type="button" class="source-reset" id="source-reset" hidden>恢复演示数据</button></p>
             <p class="brand-sub" id="period-label">2024-09 同期 → 2025-09 本期 · 五层下钻 · 金额单位：万元</p>
           </div>
         </div>
-        <nav class="nav" id="nav" aria-label="五层下钻导航">
+        <nav class="nav" id="nav" aria-label="五层下钻与工具导航">
           <a class="nav-tab" href="#/channel" data-route="channel">
             <span class="nav-level">第 1 层</span>渠道结构
           </a>
@@ -38,6 +47,13 @@
           </a>
           <a class="nav-tab" href="#/traffic" data-route="traffic">
             <span class="nav-level">第 5 层</span>客流客单
+          </a>
+          <span class="nav-sep" aria-hidden="true"></span>
+          <a class="nav-tab nav-tab--tool" href="#/import" data-route="import">
+            <span class="nav-level">工具</span>数据导入
+          </a>
+          <a class="nav-tab nav-tab--tool" href="#/report" data-route="report">
+            <span class="nav-level">工具</span>分析报告
           </a>
         </nav>
       </header>
@@ -60,9 +76,10 @@
       <div class="page-foot" id="page-foot"></div>
 
       <footer class="footer">
-        <span>演示数据，非真实经营数据</span>
+        <span id="footer-data">演示数据，非真实经营数据</span>
         <span>同店口径按同店收入占比折算，为课程演示口径</span>
-        <span>数据来源：data/revenue_2025-09.json · 计算引擎 src/engine/</span>
+        <span id="footer-derived" hidden></span>
+        <span id="footer-source">数据来源：data/revenue_2025-09.json · 计算引擎 src/engine/</span>
       </footer>
     </div>
 

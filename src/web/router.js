@@ -1,9 +1,12 @@
 /**
- * Hash 路由：`#/channel`、`#/store-mix`、`#/store-rank`、`#/category`、`#/traffic`。
+ * Hash 路由：
+ * - 五层下钻 `#/channel`、`#/store-mix`、`#/store-rank`、`#/category`、`#/traffic`；
+ * - 工具页 `#/import`（数据导入）、`#/report`（分析报告），不参与「继续下钻」链路。
  *
  * - 默认 `#/channel`（第 1 层渠道结构页），非法 hash 自动回落到第 1 层；
  * - 页签直接跳转、页面底部「继续下钻」按钮都通过 hash 切换；
- * - 切换路由时销毁旧图表实例，避免图表叠加泄漏。
+ * - 切换路由时销毁旧图表实例并调用旧页面的 destroy()，避免图表与事件监听泄漏；
+ * - 当前数据集切换后由 refresh() 重新渲染当前页（ctx 通过 getCtx() 每次实时读取）。
  */
 
 import { disposeCharts, resizeCharts } from "./charts.js";
@@ -15,70 +18,37 @@ import {
   setPageHeader,
   showError,
 } from "./layout.js";
+import { LEVELS, TOOLS } from "./levels.js";
 import { categoryPage } from "./pages/category.js";
 import { channelPage } from "./pages/channel.js";
+import { importPage } from "./pages/import.js";
+import { reportPage } from "./pages/report.js";
 import { storeMixPage } from "./pages/storeMix.js";
 import { storeRankPage } from "./pages/storeRank.js";
 import { trafficPage } from "./pages/traffic.js";
 
+const PAGES = {
+  channel: channelPage,
+  "store-mix": storeMixPage,
+  "store-rank": storeRankPage,
+  category: categoryPage,
+  traffic: trafficPage,
+  import: importPage,
+  report: reportPage,
+};
+
 /** 五层下钻路由表，顺序即下钻顺序。 */
-export const ROUTES = [
-  {
-    id: "channel",
-    hash: "#/channel",
-    level: 1,
-    label: "渠道结构",
-    title: "渠道收入结构",
-    sub: "收入从哪些渠道来、各渠道同比增减与占比",
-    insightKey: "channel",
-    page: channelPage,
-  },
-  {
-    id: "store-mix",
-    hash: "#/store-mix",
-    level: 2,
-    label: "同店 / 新店",
-    title: "同店 / 新店结构与同店渠道拆解",
-    sub: "增长来自老店还是新店，同店各渠道分别贡献多少",
-    insightKey: "store_mix",
-    page: storeMixPage,
-  },
-  {
-    id: "store-rank",
-    hash: "#/store-rank",
-    level: 3,
-    label: "门店排名",
-    title: "门店收入 / 增长额 / 增长率排名",
-    sub: "同店门店三种排名，新店不参与增长排名",
-    insightKey: "store_rank",
-    page: storeRankPage,
-  },
-  {
-    id: "category",
-    hash: "#/category",
-    level: 4,
-    label: "品类量价",
-    title: "品类量价因素分析",
-    sub: "收入变动拆成销量影响与单价影响，可切换全店 / 同店口径",
-    insightKey: "category_qty_price",
-    page: categoryPage,
-  },
-  {
-    id: "traffic",
-    hash: "#/traffic",
-    level: 5,
-    label: "客流客单",
-    title: "客流 × 人均销量 × 单价三因素",
-    sub: "同店品类三因素 + 门店客流客单两因素",
-    insightKey: "traffic",
-    page: trafficPage,
-  },
-];
+export const ROUTES = LEVELS.map((level) => ({ ...level, page: PAGES[level.id] }));
+
+/** 工具页路由。 */
+export const TOOL_ROUTES = TOOLS.map((tool) => ({ ...tool, page: PAGES[tool.id] }));
 
 ROUTES.forEach((route, index) => {
   const next = ROUTES[index + 1];
   route.next = next ? { id: next.id, hash: next.hash, label: next.label } : null;
 });
+
+const ALL_ROUTES = [...ROUTES, ...TOOL_ROUTES];
 
 /**
  * 解析当前 hash；非法或为空时回落到第 1 层（用 replaceState 避免多触发一次渲染）。
@@ -86,7 +56,7 @@ ROUTES.forEach((route, index) => {
  */
 function resolveRoute() {
   const currentHash = window.location.hash;
-  const matched = ROUTES.find((route) => route.hash === currentHash);
+  const matched = ALL_ROUTES.find((route) => route.hash === currentHash);
   if (matched) return matched;
   const fallback = ROUTES[0];
   window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${fallback.hash}`);
@@ -111,18 +81,30 @@ function measurePage() {
 
 /**
  * 创建路由控制器。
- * @param {{ ctx: {data: object, result: object}, mount: HTMLElement }} options
+ * @param {{ getCtx: () => object, mount: HTMLElement }} options
  */
-export function createRouter({ ctx, mount }) {
+export function createRouter({ getCtx, mount }) {
+  let current = null;
+
   function render(route) {
+    try {
+      current?.page.destroy?.();
+    } catch (error) {
+      console.error(error);
+    }
     disposeCharts();
+
+    const ctx = getCtx();
+    document.body.classList.toggle("mode-tool", Boolean(route.tool));
+    document.body.dataset.route = route.id;
     setActiveNav(route.id);
     setPageHeader(route, ROUTES);
-    setInsight(ctx.result.insights[route.insightKey]);
+    setInsight(route.tool ? "" : ctx.result.insights[route.insightKey]);
     setPageFoot(route, ROUTES);
 
     mount.innerHTML = "";
     mount.dataset.page = route.id;
+    current = route;
 
     try {
       route.page.render(mount, ctx);
@@ -148,10 +130,13 @@ export function createRouter({ ctx, mount }) {
 
   return {
     start() {
-      const route = resolveRoute();
-      render(route);
+      render(resolveRoute());
       window.addEventListener("hashchange", onHashChange);
       window.addEventListener("resize", onResize);
+    },
+    /** 重新渲染当前页（数据集切换后调用）。 */
+    refresh() {
+      render(resolveRoute());
     },
   };
 }

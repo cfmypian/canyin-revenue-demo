@@ -4,7 +4,9 @@
  * 只负责把数据写进 index.html 里预留好的骨架节点，具体页面内容由 pages/ 渲染。
  */
 
-import { fmtPct, fmtSignedPct, fmtSignedWan, fmtWan, htmlEsc, toneOf } from "./format.js";
+import { importedAtLabel, sourceLabel } from "./dataset.js";
+import { htmlEsc } from "./format.js";
+import { buildMetrics } from "./metrics.js";
 
 function diagnostics() {
   return document.getElementById("diagnostics");
@@ -16,76 +18,97 @@ export function setDiagValue(key, value) {
   if (element) element.dataset[key] = String(value);
 }
 
-/** 顶栏副标题：展示对比期间与单位约定。 */
-export function setPeriodLabel(data) {
-  const element = document.getElementById("period-label");
-  if (!element) return;
-  const base = data?.period?.base ?? "同期";
-  const current = data?.period?.current ?? "本期";
-  element.textContent = `${base} 同期 → ${current} 本期 · 五层下钻 · 金额单位：万元`;
-}
-
 /**
  * 首屏 5 张指标卡：
  * 本期总收入 / 同比差额 / 同比增长率 / 同店增长率 / 新店收入占比。
+ * 口径与分析报告共用 buildMetrics，保证两处数字一致。
  * @param {{ data: object, result: object }} context
  */
-export function renderMetricCards({ data, result }) {
+export function renderMetricCards(context) {
   const container = document.getElementById("metric-cards");
   if (!container) return;
 
-  const { channel, store_mix: storeMix } = result;
-  const share = storeMix.same_store_ratio;
-  const newStoreShare = share === null || share === undefined ? null : 1 - share;
-  const currentPeriod = data?.period?.current ?? "本期";
-
-  const cards = [
-    {
-      label: "本期总收入",
-      value: fmtWan(channel.current_total),
-      unit: "万元",
-      sub: `${currentPeriod} · 渠道合计口径`,
-      tone: "accent",
-    },
-    {
-      label: "同比差额",
-      value: fmtSignedWan(channel.diff),
-      unit: "万元",
-      sub: `同期 ${fmtWan(channel.base_total)} 万元`,
-      tone: toneOf(channel.diff),
-    },
-    {
-      label: "同比增长率",
-      value: fmtSignedPct(channel.growth_rate),
-      unit: "",
-      sub: "渠道合计口径",
-      tone: toneOf(channel.growth_rate),
-    },
-    {
-      label: "同店增长率",
-      value: fmtSignedPct(storeMix.same_store_growth),
-      unit: "",
-      sub: `同店收入 ${fmtWan(storeMix.same_store_current)} 万元`,
-      tone: toneOf(storeMix.same_store_growth),
-    },
-    {
-      label: "新店收入占比",
-      value: newStoreShare === null ? "—" : fmtPct(newStoreShare),
-      unit: "",
-      sub: `新店收入 ${fmtWan(storeMix.new_store_current)} 万元`,
-      tone: "flat",
-    },
-  ];
-
-  container.innerHTML = cards
+  container.innerHTML = buildMetrics(context)
     .map(
       (card) => `<article class="metric-card ${card.tone}">
         <p class="metric-label">${htmlEsc(card.label)}</p>
-        <p class="metric-value ${card.tone}">${card.value}${card.unit ? `<span class="metric-unit">${htmlEsc(card.unit)}</span>` : ""}</p>
+        <p class="metric-value ${card.tone}">${card.display}${card.unit ? `<span class="metric-unit">${htmlEsc(card.unit)}</span>` : ""}</p>
         <p class="metric-sub">${htmlEsc(card.sub)}</p>
       </article>`,
     )
     .join("");
+}
+
+/**
+ * 顶栏数据来源 + 页脚口径说明（随当前数据集变化）。
+ * @param {{ data: object, source: object, meta: object }} dataset
+ * @param {{ onReset: () => void }} handlers
+ */
+export function renderDatasetSource(dataset, { onReset }) {
+  const isImport = dataset?.source?.type === "import";
+  const badge = document.getElementById("source-badge");
+  if (badge) {
+    badge.textContent = isImport ? "导入数据" : "演示数据";
+    badge.className = `source-badge ${isImport ? "is-import" : "is-demo"}`;
+  }
+  const reset = document.getElementById("source-reset");
+  if (reset) {
+    reset.hidden = !isImport;
+    reset.onclick = onReset;
+  }
+
+  const label = document.getElementById("period-label");
+  if (label) {
+    const base = dataset?.data?.period?.base ?? "同期";
+    const current = dataset?.data?.period?.current ?? "本期";
+    const parts = [`${base} 同期 → ${current} 本期`, `数据：${sourceLabel(dataset?.source)}`];
+    const at = importedAtLabel(dataset?.source);
+    if (at) parts.push(`导入于 ${at}`);
+    parts.push("金额单位：万元");
+    label.textContent = parts.join(" · ");
+    label.title = label.textContent;
+  }
+
+  const footerData = document.getElementById("footer-data");
+  if (footerData) {
+    footerData.textContent = isImport ? "用户导入数据，仅保存在本机浏览器" : "演示数据，非真实经营数据";
+  }
+  const footerSource = document.getElementById("footer-source");
+  if (footerSource) {
+    footerSource.textContent = `数据来源：${isImport ? dataset.source.fileName : "data/revenue_2025-09.json"} · 计算引擎 src/engine/`;
+  }
+  const footerDerived = document.getElementById("footer-derived");
+  if (footerDerived) {
+    const derived = derivedNote(dataset?.meta);
+    footerDerived.textContent = derived;
+    footerDerived.hidden = !derived;
+  }
+  setDiagValue("source", isImport ? "import" : "demo");
+}
+
+/** 系统折算字段的说明文字；没有折算时返回空字符串。 */
+export function derivedNote(meta) {
+  const item = (meta?.derived ?? []).find((entry) => entry.field === "same_store_current_qty");
+  if (!item) return "";
+  return `品类本期同店销量未填写，已按同店收入占比折算（${item.items.length} 个品类，演示口径）`;
+}
+
+/**
+ * 信息提示条（非错误）：数据集回退、保存失败等。
+ * @param {string|null} message 为空时隐藏
+ */
+export function showNotice(message) {
+  const bar = document.getElementById("notice-bar");
+  const text = document.getElementById("notice-text");
+  if (!bar || !text) return;
+  if (!message) {
+    bar.hidden = true;
+    return;
+  }
+  text.textContent = message;
+  bar.hidden = false;
+  const close = document.getElementById("notice-close");
+  if (close) close.onclick = () => (bar.hidden = true);
 }
 
 /** 每页一句话结论（内容直接取引擎 insights，不在页面里再算一遍）。 */
@@ -119,8 +142,9 @@ export function setActiveNav(routeId) {
 export function setPageHeader(route, routes) {
   const container = document.getElementById("page-head");
   if (!container) return;
+  const chip = route.tool ? "工具" : `第 ${route.level} 层 / 共 ${routes.length} 层`;
   container.innerHTML = `<div class="page-title-wrap">
-      <span class="level-chip">第 ${route.level} 层 / 共 ${routes.length} 层</span>
+      <span class="level-chip${route.tool ? " level-chip--tool" : ""}">${chip}</span>
       <h1 class="page-title">${htmlEsc(route.title)}</h1>
       <p class="page-sub">${htmlEsc(route.sub)}</p>
     </div>`;
@@ -130,6 +154,11 @@ export function setPageHeader(route, routes) {
 export function setPageFoot(route, routes) {
   const container = document.getElementById("page-foot");
   if (!container) return;
+  if (route.tool) {
+    container.innerHTML = `<span class="foot-level">${htmlEsc(route.label)} · 不属于五层下钻</span>
+      <a class="foot-next" href="${routes[0].hash}">进入看板：第 1 层 · ${htmlEsc(routes[0].label)} →</a>`;
+    return;
+  }
   if (route.next) {
     container.innerHTML = `<span class="foot-level">当前：第 ${route.level} 层 / 共 ${routes.length} 层 · ${htmlEsc(route.label)}</span>
       <a class="foot-next" href="${route.next.hash}" data-next-route="${route.next.id}">继续下钻：${htmlEsc(route.next.label)} →</a>`;

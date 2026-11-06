@@ -59,7 +59,7 @@ export const storeMixPage = {
     createChart(
       root.querySelector("#chart-mix-compare"),
       stackedBarOption({
-        categories: ["2024-09 同期", "2025-09 本期"],
+        categories: [`${ctx.data.period?.base ?? ""} 同期`.trim(), `${ctx.data.period?.current ?? ""} 本期`.trim()],
         series: [
           { name: "同店", color: "#1d4ed8", data: [mix.same_store_base, mix.same_store_current] },
           { name: "新店", color: "#f59e0b", data: [0, mix.new_store_current] },

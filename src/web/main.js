@@ -3,14 +3,17 @@
  *
  * 冷启动顺序：
  * 1. 安装全局错误兜底（window.onerror / unhandledrejection）；
- * 2. 通过 HTTP 读取 data/revenue_2025-09.json（file:// 直开会失败，给可读提示而不是白屏）；
- * 3. 调用引擎 analyze(data)，把结果交给页面结构（标题、指标卡）与路由渲染；
- * 4. 把启动状态写入 #diagnostics，供冒烟测试读取。
+ * 2. 通过 HTTP 读取演示数据 data/revenue_2025-09.json（file:// 直开会失败，给可读提示而不是白屏）；
+ * 3. 读取当前数据集（本机导入数据优先，校验失败回退演示数据，见 dataset.js）；
+ * 4. 调用引擎 analyze(data)，把结果交给页面结构（来源、指标卡）与路由渲染；
+ * 5. 导入 / 恢复演示数据时重建 ctx 并重新渲染，不整页刷新；
+ * 6. 把启动状态写入 #diagnostics，供冒烟测试读取。
  */
 
 import { analyze } from "../engine/index.js";
 import { echartsReady } from "./charts.js";
-import { renderMetricCards, setDiagValue, setPeriodLabel, showError, showFatal } from "./layout.js";
+import { loadCurrentDataset, resetToDemo, saveImported } from "./dataset.js";
+import { renderDatasetSource, renderMetricCards, setDiagValue, showError, showFatal, showNotice } from "./layout.js";
 import { createRouter } from "./router.js";
 
 /** 全局错误兜底：任何脚本错误都在页面顶部显示可读错误条。 */
@@ -62,13 +65,41 @@ async function boot() {
   }
 
   try {
-    const data = await loadRevenueData();
-    const result = analyze(data);
-    const ctx = { data, result };
+    const demoData = await loadRevenueData();
+    let ctx = null;
+    let router = null;
 
-    setPeriodLabel(data);
-    renderMetricCards(ctx);
-    createRouter({ ctx, mount: document.getElementById("page") }).start();
+    /** 用数据集重建 ctx（每次 analyze 一次，看板与报告共用同一份结果）。 */
+    const applyDataset = (dataset) => {
+      ctx = {
+        data: dataset.data,
+        result: analyze(dataset.data),
+        dataset,
+        demoData,
+        actions,
+      };
+      renderDatasetSource(dataset, { onReset: actions.resetToDemo });
+      renderMetricCards(ctx);
+      showNotice(dataset.notice);
+    };
+
+    const actions = {
+      /** 导入页确认导入：保存到本机 → 重新计算 → 跳到第 1 层。 */
+      applyImport({ fileName, data, meta }) {
+        applyDataset(saveImported({ fileName, data, meta }));
+        if (window.location.hash === "#/channel") router.refresh();
+        else window.location.hash = "#/channel";
+      },
+      /** 清除本机导入数据，回到演示数据。 */
+      resetToDemo() {
+        applyDataset(resetToDemo(demoData));
+        router.refresh();
+      },
+    };
+
+    applyDataset(loadCurrentDataset(demoData));
+    router = createRouter({ getCtx: () => ctx, mount: document.getElementById("page") });
+    router.start();
     setDiagValue("status", "ready");
   } catch (error) {
     showFatal({
