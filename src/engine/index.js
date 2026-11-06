@@ -66,3 +66,18 @@ export function analyze(data) {
 }
 
 export default analyze;
+
+// 数据导入管线（模板 / 解析 / 校验 / 标准化），供导入页与测试使用
+export {
+  DATA_SHEETS,
+  ISSUE_CODES,
+  SHEET_NAMES,
+  denormalize,
+  formatIssue,
+  headerText,
+  importWorkbook,
+  parseCSV,
+  revalidateDataset,
+  sheetNameFromFileName,
+  toCSV,
+} from "./import/index.js";
